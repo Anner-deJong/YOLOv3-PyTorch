@@ -7,6 +7,5 @@
 __pycache__
 
 # exclude weights
-./cfg_weights_utils/*.weights
-./cfg_weights_utils/*.cfg
+cfg_weights_utils/*.weights
 
