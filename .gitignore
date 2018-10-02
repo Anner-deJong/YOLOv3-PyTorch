@@ -1,4 +1,12 @@
 
+# mac stuff
 .DS_Store
 
+# python and jupyter notebook stuff
 .ipynb_checkpoints
+__pycache__
+
+# exclude weights
+./cfg_weights_utils/*.weights
+./cfg_weights_utils/*.cfg
+
