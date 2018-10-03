@@ -4,8 +4,15 @@
 
 # python and jupyter notebook stuff
 .ipynb_checkpoints
-__pycache__
+*__pycache__*
 
 # exclude weights
 cfg_weights_utils/*.weights
+
+# exclude images
+*.jpg
+*.png
+
+# exclude the notebook mess
+Yolo_v3_components.ipynb
 

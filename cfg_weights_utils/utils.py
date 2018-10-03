@@ -1,8 +1,15 @@
 # This file contains helper functions and layers for the Yolo v3 network
 
+import cv2
 import torch
 import torch.nn as nn
 import numpy as np
+
+
+#####################################
+### pytorch model layer functions ###
+#####################################
+
 
 # FROM TUTORIAL:
 class EmptyLayer(nn.Module):
@@ -123,6 +130,10 @@ def create_detection_layer(block, idx):
     return seq
 
 
+######################################################
+### model output into prediction warping functions ###
+######################################################
+
 def predict_transform(prediction, input_size, anchors, num_classes, gpu_enabled=False):
     """
     This function consists of two steps
@@ -181,4 +192,129 @@ def predict_transform(prediction, input_size, anchors, num_classes, gpu_enabled=
     return pred
 
 
+##################################################
+### Output/prediction/detection warp functions ###
+##################################################
 
+def pred2corners(pred):
+    # prediction should contain 3 dim, with the last one consisting of: x, y, w, h
+    # these are the centers and the dimensions of a prediction 
+    # this get's mapped to left top corner x, y and right bottom corner x, y
+    
+    corners = torch.zeros_like(pred, dtype=pred.dtype)
+    corners[:, :, 0] = pred[:, :, 0] - pred[:, :, 2]/2.
+    corners[:, :, 1] = pred[:, :, 1] - pred[:, :, 3]/2.
+    corners[:, :, 2] = pred[:, :, 0] + pred[:, :, 2]/2.
+    corners[:, :, 3] = pred[:, :, 1] + pred[:, :, 3]/2.
+
+    return corners
+
+def IoU(corners1, corners2):
+    # calculates the IoU between two 1D length 4 arrays consisting of:
+    # left, top, right, bottem coordinates respectively
+    x1_l, y1_t, x1_r, y1_b = corners1
+    x2_l, y2_t, x2_r, y2_b = corners2
+    
+    # no horizontal overlap
+    if (x1_r <= x2_l) or (x1_l >= x2_r):
+        return 0
+    
+    # no vertical overlap
+    if (y1_b <= y2_t) or (y1_t >= y2_b):
+        return 0
+    
+    # else: some overlap exists
+    # overlap (ovl) border values
+    ovl_l = torch.max(x1_l, x2_l)
+    ovl_r = torch.min(x1_r, x2_r)
+    ovl_t = torch.max(y1_t, y2_t)
+    ovl_b = torch.min(y1_b, y2_b)
+    
+    # surfaces
+    A_1   = (x1_r - x1_l) * (y1_b - y1_t)
+    A_2   = (x2_r - x2_l) * (y2_b - y2_t)
+    A_ovl = (ovl_r - ovl_l) * (ovl_b - ovl_t)
+
+    return (A_ovl / (A_1 + A_2 - A_ovl))
+
+
+##########################################
+### helper function to get class names ###
+##########################################
+
+def load_classes(class_file='./cfg_weights_utils/coco.names'):
+    # reads in a text file with line separated class names, in order
+    # returns a dictionary with class_name -> ind, and reverse, mapping
+    classes = {}
+    
+    with open(class_file) as f:
+        class_names = [name.rstrip('\n') for name in f]
+        for i, class_name in enumerate(class_names):
+            classes[i]          = class_name
+            classes[class_name] = i
+    
+    classes['n_classes'] = i+1
+    
+    return classes
+
+
+#########################################################
+### image pipeline (preprocessing, drawing) functions ###
+#########################################################
+
+def preprocess(img, resolution=416):
+    # assuming an image freshly loaded via opencv: numpy & BGR
+    img    = img[:, :, ::-1]                  # inverse color channels
+    
+    h, w   = img.shape[:2]
+    scale  = resolution / max(h, w)
+    h, w   = int(h*scale), int(w*scale)
+    img    = cv2.resize(img, (w, h))          # resize while keeping ratio
+    
+    img    = img.astype(np.float32) / 255.    # cast as float and normalize
+    
+    # add padding and keep track of the padding offset (-> [x, y, scale])
+    if (h<w):
+        pad_up    = np.ones( shape=((w-h) // 2, w, 3),          dtype=np.float32) * 128./255.
+        offset    = [0, pad_up.shape[0], scale]
+        pad_down  = np.ones( shape=(w-h-offset[1], w, 3), dtype=np.float32) * 128./255.
+        img       = np.concatenate( (pad_up, img, pad_down), axis=0)
+    else:
+        pad_left  = np.ones( shape=( h, (h-w) // 2, 3),            dtype=np.float32) * 128./255.
+        offset    = [pad_left.shape[1], 0, scale]
+        pad_right = np.ones( shape=( h, h-w-offset[0], 3), dtype=np.float32) * 128./255.
+        img       = np.concatenate( (pad_left, img, pad_right), axis=1)
+    
+    img = img.transpose(2, 0, 1)[None]       # HWC -> BCHW
+    img = torch.tensor(img)
+    
+    return img, offset
+
+def draw_box(img, offset, cls_name, detection):
+    # offset contains [x, y, scale] offsets
+    # detection is a torch vector with:
+    # [x_left, y_up, x_down, y_right, objectness score, cls score, cls index]
+    
+    # first offset and scale the detection coordinates
+    x_l = int((detection[0].item() - offset[0]) / offset[2])
+    y_u = int((detection[1].item() - offset[1]) / offset[2])
+    x_r = int((detection[2].item() - offset[0]) / offset[2])
+    y_b = int((detection[3].item() - offset[1]) / offset[2])
+    
+    cv2.rectangle(img, (x_l, y_u), (x_r, y_b), (0, 0, 255), 5)
+    cv2.rectangle(img, (x_l-3, y_u-35), (x_l+60, y_u), (0, 0, 255), -1)
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    cv2.putText(img, cls_name, (x_l+5, y_u-10), font, fontScale=.9,
+                color=(255,255,255), thickness=2)
+    
+    return img
+
+def annotate_img(img, offset, det_dict):
+    ann_img = img.copy()
+    
+    for cls, dets in det_dict.items():
+        for i in range(dets.shape[0]): # first dim represent all separate instances for a class    
+            ann_img = draw_box(ann_img, offset, cls, dets[i])
+    
+    return ann_img
+    
