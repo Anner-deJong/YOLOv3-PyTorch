@@ -1,11 +1,12 @@
 # this file contains functions that define the underlying network of Yolo v3
 # as well as a wrapper class YOLOv3 for easy (limited) usage outside this repository
 
+import os
 import torch
 import torch.nn as nn
 import numpy as np
 
-from cfg_weights_utils.utils import *
+from .cfg_weights_utils.utils import *
 
 
 def parse_cfg(config_file='./cfg_weights_utils/yolov3.cfg'):
@@ -83,12 +84,14 @@ def create_modules(blocks):
 
 class Darknet(nn.Module):
     def __init__(self, config_file='./cfg_weights_utils/yolov3.cfg',
-                        class_file='./cfg_weights_utils/coco.names'):
+                        class_file='./cfg_weights_utils/coco.names',
+                      weights_file='./cfg_weights_utils/yolov3.weights'):
         
         super(Darknet, self).__init__()
         self.class_names           = load_classes(class_file)
         self.net_info, self.blocks = parse_cfg(config_file)
         self.module_list           = create_modules(self.blocks)
+        self.weights_file          = weights_file;
         
     def forward(self, x, gpu_enabled=False):
         # store the current image's resolution
@@ -138,14 +141,14 @@ class Darknet(nn.Module):
                 
         return bboxes
     
-    def load_weights(self, weights_file='./cfg_weights_utils/yolov3.weights'):
+    def load_weights(self, weights_file=None):
         # importing the weights seems extremely tedious.
         # definitely couldn't have done it without the tutorial stating the order and datatype
         # weights are stored in the order: batch_norm or bias, weights
         # bn weights are stored in the order: bias, weight, running_mean, running_var
         
-        # get weights from file
-        with open(weights_file) as f:
+        # get weights from file (default to Darknet class initialization weights_file)
+        with open(weights_file if weights_file else self.weights_file) as f:
             # FROM TUTORIAL
             _ = np.fromfile(f, dtype=np.int32, count=5)  # overhead
             weights = np.fromfile(f, dtype=np.float32)   # all conv and batch norm weights
@@ -244,7 +247,14 @@ class YOLOv3:
     output: image copy with annotated detections, BGR
     """
     def __init__(self):
-        self.model = Darknet()
+        
+        
+        base       = os.path.dirname(__file__)
+        cfg_file   = os.path.join(base, './cfg_weights_utils/yolov3.cfg')
+        cls_file   = os.path.join(base, './cfg_weights_utils/coco.names')
+        wgt_file   = os.path.join(base, './cfg_weights_utils/yolov3.weights')
+        
+        self.model = Darknet(config_file=cfg_file, class_file=cls_file, weights_file=wgt_file)
         self.model.load_weights()
         
     def inference(self, img, obj_confidence=0.5, nms_confidence=0.4):

@@ -16,3 +16,6 @@ cfg_weights_utils/*.weights
 # exclude the notebook mess
 Yolo_v3_components.ipynb
 
+# exclude note incorporated in other repositories
+YOLOv3_REPOSITORY.txt
+
