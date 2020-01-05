@@ -7,15 +7,6 @@
 *__pycache__*
 
 # exclude weights
-cfg_weights_utils/*.weights
+Yolov3/cfg_weights_utils/*.weights
 
-# exclude images
-*.jpg
-*.png
-
-# exclude the notebook mess
-Yolo_v3_components.ipynb
-
-# exclude note incorporated in other repositories
-YOLOv3_REPOSITORY.txt
 
