@@ -258,7 +258,7 @@ class YOLOv3:
         self.model.load_weights()
         
     def inference(self, img, obj_confidence=0.5, nms_confidence=0.4):
-        img_input, offset = preprocess(img.copy())
+        img_input, offset = ImgUtils.preprocess(img.copy())
         
         # actual inference
         predictions       = self.model(img_input)
@@ -269,7 +269,11 @@ class YOLOv3:
         
         # currently implementation includes batches but only 1 image per batch
         detections_dict   = detections_dict[0]
-        ann_img           = annotate_img(img, offset, detections_dict)
+        
+        # print out all detected classes plus their # of instance
+        # for cls, detection in detections_dict.items():
+        #     print(cls, detection.shape[0])
+        ann_img           = ImgUtils.annotate_img(img, offset, detections_dict)
         
         return ann_img
 

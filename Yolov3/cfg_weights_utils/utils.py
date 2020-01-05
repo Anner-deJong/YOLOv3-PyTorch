@@ -262,59 +262,66 @@ def load_classes(class_file='./cfg_weights_utils/coco.names'):
 ### image pipeline (preprocessing, drawing) functions ###
 #########################################################
 
-def preprocess(img, resolution=416):
-    # assuming an image freshly loaded via opencv: numpy & BGR
-    img    = img[:, :, ::-1]                  # inverse color channels
-    
-    h, w   = img.shape[:2]
-    scale  = resolution / max(h, w)
-    h, w   = int(h*scale), int(w*scale)
-    img    = cv2.resize(img, (w, h))          # resize while keeping ratio
-    
-    img    = img.astype(np.float32) / 255.    # cast as float and normalize
-    
-    # add padding and keep track of the padding offset (-> [x, y, scale])
-    if (h<w):
-        pad_up    = np.ones( shape=((w-h) // 2, w, 3),          dtype=np.float32) * 128./255.
-        offset    = [0, pad_up.shape[0], scale]
-        pad_down  = np.ones( shape=(w-h-offset[1], w, 3), dtype=np.float32) * 128./255.
-        img       = np.concatenate( (pad_up, img, pad_down), axis=0)
-    else:
-        pad_left  = np.ones( shape=( h, (h-w) // 2, 3),            dtype=np.float32) * 128./255.
-        offset    = [pad_left.shape[1], 0, scale]
-        pad_right = np.ones( shape=( h, h-w-offset[0], 3), dtype=np.float32) * 128./255.
-        img       = np.concatenate( (pad_left, img, pad_right), axis=1)
-    
-    img = img.transpose(2, 0, 1)[None]       # HWC -> BCHW
-    img = torch.tensor(img)
-    
-    return img, offset
+class ImgUtils():
 
-def draw_box(img, offset, cls_name, detection):
-    # offset contains [x, y, scale] offsets
-    # detection is a torch vector with:
-    # [x_left, y_up, x_down, y_right, objectness score, cls score, cls index]
-    
-    # first offset and scale the detection coordinates
-    x_l = int((detection[0].item() - offset[0]) / offset[2])
-    y_u = int((detection[1].item() - offset[1]) / offset[2])
-    x_r = int((detection[2].item() - offset[0]) / offset[2])
-    y_b = int((detection[3].item() - offset[1]) / offset[2])
-    
-    cv2.rectangle(img, (x_l, y_u), (x_r, y_b), (0, 0, 255), 5)
-    cv2.rectangle(img, (x_l-3, y_u-35), (x_l+60, y_u), (0, 0, 255), -1)
-    font = cv2.FONT_HERSHEY_SIMPLEX
-    cv2.putText(img, cls_name, (x_l+5, y_u-10), font, fontScale=.9,
-                color=(255,255,255), thickness=2)
-    
-    return img
+    def preprocess(img, resolution=416):
+        # assuming an image freshly loaded via opencv: numpy & BGR
+        img    = img[:, :, ::-1]                  # inverse color channels
 
-def annotate_img(img, offset, det_dict):
-    ann_img = img.copy()
-    
-    for cls, dets in det_dict.items():
-        for i in range(dets.shape[0]): # first dim represent all separate instances for a class    
-            ann_img = draw_box(ann_img, offset, cls, dets[i])
-    
-    return ann_img
+        h, w   = img.shape[:2]
+        scale  = resolution / max(h, w)
+        h, w   = int(h*scale), int(w*scale)
+        img    = cv2.resize(img, (w, h))          # resize while keeping ratio
+
+        img    = img.astype(np.float32) / 255.    # cast as float and normalize
+
+        # add padding and keep track of the padding offset (-> [x, y, scale])
+        if (h<w):
+            pad_up    = np.ones( shape=((w-h) // 2, w, 3),          dtype=np.float32) * 128./255.
+            offset    = [0, pad_up.shape[0], scale]
+            pad_down  = np.ones( shape=(w-h-offset[1], w, 3), dtype=np.float32) * 128./255.
+            img       = np.concatenate( (pad_up, img, pad_down), axis=0)
+        else:
+            pad_left  = np.ones( shape=( h, (h-w) // 2, 3),            dtype=np.float32) * 128./255.
+            offset    = [pad_left.shape[1], 0, scale]
+            pad_right = np.ones( shape=( h, h-w-offset[0], 3), dtype=np.float32) * 128./255.
+            img       = np.concatenate( (pad_left, img, pad_right), axis=1)
+
+        img = img.transpose(2, 0, 1)[None]       # HWC -> BCHW
+        img = torch.tensor(img)
+
+        return img, offset
+
+    def draw_box(img, offset, cls_name, detection):
+        # offset contains [x, y, scale] offsets
+        # detection is a torch vector with:
+        # [x_left, y_up, x_down, y_right, objectness score, cls score, cls index]
+
+        # first offset and scale the detection coordinates
+        x_l = int((detection[0].item() - offset[0]) / offset[2])
+        y_u = int((detection[1].item() - offset[1]) / offset[2])
+        x_r = int((detection[2].item() - offset[0]) / offset[2])
+        y_b = int((detection[3].item() - offset[1]) / offset[2])
+
+        # detection bounding box
+        cv2.rectangle(img, (x_l, y_u), (x_r, y_b), (0, 0, 255), 5)
+        
+        # detection text box on top
+        box_width = len(cls_name) * 20
+        cv2.rectangle(img, (x_l-3, y_u-35), (x_l+box_width, y_u), (0, 0, 255), -1)
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        cv2.putText(img, cls_name, (x_l+5, y_u-10), font, fontScale=.9,
+                    color=(255,255,255), thickness=2)
+        
+
+        return img
+
+    def annotate_img(img, offset, det_dict):
+        ann_img = img.copy()
+
+        for cls, dets in det_dict.items():
+            for i in range(dets.shape[0]): # first dim represent all separate instances for a class    
+                ann_img = ImgUtils.draw_box(ann_img, offset, cls, dets[i])
+
+        return ann_img
     
